@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Excel・SharePoint Online 連携データ転記システム 仕様書</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Mermaid.js for diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    pre code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">🐱</span>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">Excel ➔ SPO ➔ Excel 転記システム 仕様書</h1>
+          <p class="text-xs text-slate-500">第 2.3 版（非テーブル・自由形式Excel完全対応版）</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3">
+        <a href="#feedback-section" class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition">
+          <i class="fa-solid fa-pen-to-square"></i>
+          <span>フィードバック入力</span>
+        </a>
+        <a href="https://github.com/raise-sys/zeiseimemo" target="_blank" class="text-slate-500 hover:text-slate-800 text-lg transition" title="GitHub リポジトリ">
+          <i class="fa-brands fa-github"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 grid grid-cols-1 lg:grid-cols-4 gap-8">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="hidden lg:block col-span-1">
+      <div class="sticky top-24 space-y-6">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">目次</h3>
+          <nav class="space-y-1.5 text-sm">
+            <a href="#sec-overview" class="block py-1 text-slate-600 hover:text-blue-600 transition">1. システム概要と基本思想</a>
+            <a href="#sec-flows" class="block py-1 text-slate-600 hover:text-blue-600 transition">2. 3つの独立フロー定義</a>
+            <a href="#sec-filename" class="block py-1 text-slate-600 hover:text-blue-600 transition">3. 入力命名規則・パース</a>
+            <a href="#sec-delete-insert" class="block py-1 text-slate-600 hover:text-blue-600 transition">4. 洗い替え (Delete & Insert)</a>
+            <a href="#sec-patterns" class="block py-1 text-slate-600 hover:text-blue-600 transition">5. 転記方式・非テーブル対応</a>
+            <a href="#sec-mapping" class="block py-1 text-slate-600 hover:text-blue-600 transition">6. マッピング表モデル設計</a>
+            <a href="#sec-schema" class="block py-1 text-slate-600 hover:text-blue-600 transition">7. SPO動的列追加 (安全設計)</a>
+            <a href="#sec-steps" class="block py-1 text-slate-600 hover:text-blue-600 transition">8. 今後の実装ステップ</a>
+            <a href="#feedback-section" class="block py-1 font-semibold text-emerald-600 hover:text-emerald-700 transition">📝 メモ・フィードバック入力</a>
+          </nav>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl text-xs text-blue-800 space-y-1.5">
+          <div class="font-bold flex items-center space-x-1.5">
+            <i class="fa-solid fa-circle-check text-blue-600"></i>
+            <span>設計のハイライト</span>
+          </div>
+          <p>• M365標準（プレミアム不要）</p>
+          <p>• Excelテーブル化（Ctrl+T）一切不要</p>
+          <p>• ゴーストデータを防ぐ洗い替え方式</p>
+          <p>• 事業場コード8桁完全文字列管理</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="col-span-1 lg:col-span-3 space-y-10">
+
+      <!-- Hero Card -->
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 sm:p-8 text-white shadow-md">
+        <div class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-sm mb-3">
+          システム基本設計・仕様書
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-extrabold mb-3">Excel ➔ SharePoint Online ➔ Excel 連携転記システム</h2>
+        <p class="text-blue-100 text-sm leading-relaxed max-w-3xl">
+          各事業場等から投入される自由形式のExcelファイルを自動検知し、マッピング表に従ってSharePoint Onlineリストへ安全に中間蓄積。指定の帳票Excelへデザインを崩さず動的出力します。
+        </p>
+        <div class="mt-6 flex flex-wrap gap-2 text-xs">
+          <span class="bg-black/20 px-3 py-1 rounded-lg">Power Automate（標準）</span>
+          <span class="bg-black/20 px-3 py-1 rounded-lg">Office Scripts</span>
+          <span class="bg-black/20 px-3 py-1 rounded-lg">SharePoint Online リスト</span>
+          <span class="bg-black/20 px-3 py-1 rounded-lg">設定駆動アーキテクチャ</span>
+        </div>
+      </div>
+
+      <!-- Section 1 -->
+      <section id="sec-overview" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 1</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">1. システム概要と基本思想</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-sm text-slate-900 mb-1 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+              <span>1. 設定駆動型（マッピング表駆動）</span>
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              新帳票の追加や項目・セル位置の変更時、プログラム本体を改修せず、マッピング表に1行足すだけで全転記が完結。
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-sm text-slate-900 mb-1 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+              <span>2. M365標準機能（追加コストゼロ）</span>
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              プレミアムコネクタを一切使わず、M365標準ライセンスに含まれる標準コネクタとOffice Scriptsのみで構築。
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-sm text-slate-900 mb-1 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-purple-600"></span>
+              <span>3. テーブル化不要（現場無加工対応）</span>
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Excelの「テーブル化（Ctrl+T）」を一切要求せず、罫線だけの枠や結合セルをOffice Scriptsで直接高速操作。
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h4 class="font-bold text-sm text-slate-900 mb-1 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-amber-600"></span>
+              <span>4. 安全第一のスキーマ拡張</span>
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              SPOリストの列は「追加のみ」自動化。データの消失事故を防ぐため、自動削除は絶対に行わない安全設計。
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="font-bold text-sm text-slate-900 mb-3">全体アーキテクチャ図</h4>
+          <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 overflow-x-auto flex justify-center">
+            <pre class="mermaid text-center">
+flowchart TD
+    subgraph Maint["【フロー3】リスト定義メンテ"]
+        M1[マッピング表定義] -->|HTTP要求 REST API| M2[(SPOリストの列を自動拡張)]
+    end
+
+    subgraph Ingest["【フロー1】データ取込（ファイル投入時）"]
+        I1[監視フォルダー投入] --> I2[ファイル名自動パース]
+        I2 --> I3[マッピング表参照]
+        I3 --> I4[Office Scriptsで抽出]
+        I4 --> I5[既存データ削除: Delete]
+        I5 --> I6[新規データ登録: Insert]
+        I6 --> I7[処理済みフォルダー移動]
+        I6 -.-> DB[(SPOデータ蓄積リスト)]
+    end
+
+    subgraph Gen["【フロー2】帳票出力（オンデマンド/定期）"]
+        G1[出力トリガー起動] --> G2[SPOデータ抽出]
+        DB -.-> G2
+        G2 --> G3[帳票テンプレート複製]
+        G3 --> G4[Office Scriptsで転記]
+        G4 --> G5[完成帳票Excelの保存]
+    end
+            </pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2 -->
+      <section id="sec-flows" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 2</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">2. システムを構成する「3つの独立フロー」定義</h3>
+        </div>
+
+        <div class="table-responsive">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider">
+                <th class="p-3 border border-slate-200">フロー名</th>
+                <th class="p-3 border border-slate-200">トリガー</th>
+                <th class="p-3 border border-slate-200">役割・処理内容</th>
+                <th class="p-3 border border-slate-200">主アクション</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 text-slate-600">
+              <tr class="hover:bg-slate-50">
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">① データ取込フロー</td>
+                <td class="p-3 border border-slate-200">フォルダーへのファイル作成</td>
+                <td class="p-3 border border-slate-200">Excel解析、Delete & Insert でSPOリストへ同期。</td>
+                <td class="p-3 border border-slate-200">Office Scripts実行、Delete、Create items</td>
+              </tr>
+              <tr class="hover:bg-slate-50">
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">② 帳票出力フロー</td>
+                <td class="p-3 border border-slate-200">手動ボタン / 締めスケジュール</td>
+                <td class="p-3 border border-slate-200">SPOから抽出、テンプレートExcelに流し込み生成。</td>
+                <td class="p-3 border border-slate-200">Get items、ファイル複製、Office Scripts</td>
+              </tr>
+              <tr class="hover:bg-slate-50">
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">③ スキーマ保守フロー</td>
+                <td class="p-3 border border-slate-200">手動実行（マッピング追加時）</td>
+                <td class="p-3 border border-slate-200">未作成の列を検知し、SPOリストへ自動作成。</td>
+                <td class="p-3 border border-slate-200">SharePoint に HTTP 要求を送信 (POST)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 3 -->
+      <section id="sec-filename" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 3</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">3. 入力ファイル命名規則と自動パース仕様</h3>
+        </div>
+
+        <div class="table-responsive">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 text-xs uppercase">
+                <th class="p-3 border border-slate-200">帳票種類</th>
+                <th class="p-3 border border-slate-200">命名フォーマット</th>
+                <th class="p-3 border border-slate-200">具体例</th>
+                <th class="p-3 border border-slate-200">要素数</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-600">
+              <tr>
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">D-2 帳票</td>
+                <td class="p-3 font-mono text-xs border border-slate-200">{帳票コード}_{事業場コード}_{期}.xlsx</td>
+                <td class="p-3 font-mono text-xs text-blue-600 border border-slate-200">D-2_10010001_上期.xlsx</td>
+                <td class="p-3 border border-slate-200">3要素</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">上記以外の帳票</td>
+                <td class="p-3 font-mono text-xs border border-slate-200">{帳票コード}_{事業場コード}.xlsx</td>
+                <td class="p-3 font-mono text-xs text-blue-600 border border-slate-200">D-2-3_20050001.xlsx</td>
+                <td class="p-3 border border-slate-200">2要素</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs space-y-1">
+          <div class="font-bold flex items-center space-x-1.5 text-amber-800">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>事業場コード 8桁統一ルール（ゼロ落ち厳禁）</span>
+          </div>
+          <p>事業場コード（例: <code>00012345</code>）は先頭が0で始まる場合があるため、Excel、スクリプト、フロー、SPOの全層で<strong>文字列（テキスト型）として保持</strong>し、数値変換を厳禁とします。8桁以外のファイルはエラーとして検知します。</p>
+        </div>
+      </section>
+
+      <!-- Section 4 -->
+      <section id="sec-delete-insert" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 4</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">4. データ洗い替え仕様（Delete & Insert 方式）</h3>
+        </div>
+
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Upsert（更新）ではなく、<strong>「対象キーの既存レコードを全削除した上で新規登録する」</strong> 洗い替え方式を採用しています。
+        </p>
+
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          <h4 class="text-xs font-bold text-slate-700 uppercase">削除抽出条件（OData フィルター）の自動分岐</h4>
+          <div class="space-y-2 font-mono text-xs">
+            <div class="p-2.5 bg-white rounded border border-slate-200">
+              <span class="text-blue-600 font-bold">D-2 帳票:</span> PlantCode eq '{事業場コード}' and FormCode eq 'D-2' and PeriodKeyword eq '{期区分}'
+            </div>
+            <div class="p-2.5 bg-white rounded border border-slate-200">
+              <span class="text-blue-600 font-bold">他帳票:</span> PlantCode eq '{事業場コード}' and FormCode eq '{帳票コード}'
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-800">
+            <strong>✓ ゴーストデータ完全防止:</strong> 明細が30行から5行に減った場合でも、古い25行が残らず完全同期。
+          </div>
+          <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-800">
+            <strong>✓ 高速・安定:</strong> 1行ずつの存在チェックや更新分岐が不要になり、フローが極めて高速・シンプル。
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5 -->
+      <section id="sec-patterns" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 5</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">5. 転記方式（3パターン）＆ 非テーブル対応</h3>
+        </div>
+
+        <div class="table-responsive">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 text-xs uppercase">
+                <th class="p-3 border border-slate-200">方式名</th>
+                <th class="p-3 border border-slate-200">対象イメージ</th>
+                <th class="p-3 border border-slate-200">データ構造</th>
+                <th class="p-3 border border-slate-200">行走査・判定ロジック</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-600 text-xs">
+              <tr>
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">方式1：個別セル散在型</td>
+                <td class="p-3 border border-slate-200">申請書・単票・チェック票</td>
+                <td class="p-3 border border-slate-200">1シート ＝ 1行</td>
+                <td class="p-3 border border-slate-200">指定セル（<code>B2</code>, <code>D5</code> 等）から値を抽出し、SPOの1行に集約。</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">方式2-A：明細・上詰め連続型</td>
+                <td class="p-3 border border-slate-200">途切れのない一覧表・集計表</td>
+                <td class="p-3 border border-slate-200">1表 ＝ 複数行</td>
+                <td class="p-3 border border-slate-200">開始行から下方走査し、<strong>「最初の空行」で終了（Break）</strong>。</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold text-slate-900 border border-slate-200">方式2-B：明細・固定枠/歯抜け型</td>
+                <td class="p-3 border border-slate-200">30行枠などの固定枠シート</td>
+                <td class="p-3 border border-slate-200">1表 ＝ 複数行</td>
+                <td class="p-3 border border-slate-200">最大枠数まで<strong>全行走査</strong>。空行はスキップし有効行のみ抽出。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 6 -->
+      <section id="sec-mapping" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 6</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">6. マッピング表データモデル設計（完全対称型）</h3>
+        </div>
+
+        <p class="text-sm text-slate-600">
+          「入力（Input）」と「出力（Output）」で、<strong>ブック ➔ シート ➔ 行/列 ➔ セル</strong> を完全に対称管理します。
+        </p>
+
+        <div class="table-responsive">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700">
+                <th class="p-2.5 border border-slate-200">大分類</th>
+                <th class="p-2.5 border border-slate-200">列名（内部名）</th>
+                <th class="p-2.5 border border-slate-200">表示名</th>
+                <th class="p-2.5 border border-slate-200">型</th>
+                <th class="p-2.5 border border-slate-200">説明・設定例</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-600">
+              <tr class="bg-slate-50/50">
+                <td class="p-2.5 font-bold border border-slate-200" rowspan="5">基本識別</td>
+                <td class="p-2.5 font-mono text-blue-600 border border-slate-200">FormCode</td>
+                <td class="p-2.5 border border-slate-200">帳票コード</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">ファイル名と一致する識別子（例: <code>D-2</code>）</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="p-2.5 font-mono text-blue-600 border border-slate-200">MappingID</td>
+                <td class="p-2.5 border border-slate-200">マッピングID</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">転記ジョブのグループID（例: <code>MAP_D2</code>）</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="p-2.5 font-mono text-blue-600 border border-slate-200">TransferType</td>
+                <td class="p-2.5 border border-slate-200">転記方式</td>
+                <td class="p-2.5 border border-slate-200">選択肢</td>
+                <td class="p-2.5 border border-slate-200"><code>方式1</code> / <code>方式2-A</code> / <code>方式2-B</code></td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="p-2.5 font-mono text-blue-600 border border-slate-200">FieldName</td>
+                <td class="p-2.5 border border-slate-200">項目名</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">管理用表示名（例: <code>事業場コード</code>, <code>品名</code>）</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="p-2.5 font-mono text-blue-600 border border-slate-200">IsPrimaryKey</td>
+                <td class="p-2.5 border border-slate-200">主キーフラグ</td>
+                <td class="p-2.5 border border-slate-200">Yes/No</td>
+                <td class="p-2.5 border border-slate-200">レコード特定・削除対象キーフラグ</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold border border-slate-200" rowspan="2">SPO定義</td>
+                <td class="p-2.5 font-mono text-indigo-600 border border-slate-200">SPColumnName</td>
+                <td class="p-2.5 border border-slate-200">SPO内部列名</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">データ格納先SPO列名（自動拡張対象）</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-mono text-indigo-600 border border-slate-200">DataType</td>
+                <td class="p-2.5 border border-slate-200">データ型</td>
+                <td class="p-2.5 border border-slate-200">選択肢</td>
+                <td class="p-2.5 border border-slate-200"><code>Text</code>, <code>Number</code>, <code>DateTime</code> 等</td>
+              </tr>
+              <tr class="bg-emerald-50/30">
+                <td class="p-2.5 font-bold border border-slate-200" rowspan="5">入力元 (Input)</td>
+                <td class="p-2.5 font-mono text-emerald-700 border border-slate-200">InputSheet</td>
+                <td class="p-2.5 border border-slate-200">入力シート名</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">読み取り元シート名（例: <code>点検様式</code>）</td>
+              </tr>
+              <tr class="bg-emerald-50/30">
+                <td class="p-2.5 font-mono text-emerald-700 border border-slate-200">InputLocation</td>
+                <td class="p-2.5 border border-slate-200">入力位置</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200"><strong>セル番地（<code>B2</code>）</strong> または <strong>列記号（<code>B</code>）</strong></td>
+              </tr>
+              <tr class="bg-emerald-50/30">
+                <td class="p-2.5 font-mono text-emerald-700 border border-slate-200">InputStartRow</td>
+                <td class="p-2.5 border border-slate-200">入力開始行</td>
+                <td class="p-2.5 border border-slate-200">数値</td>
+                <td class="p-2.5 border border-slate-200">表形式の読み取り開始行（例: <code>5</code>）</td>
+              </tr>
+              <tr class="bg-emerald-50/30">
+                <td class="p-2.5 font-mono text-emerald-700 border border-slate-200">InputMaxRows</td>
+                <td class="p-2.5 border border-slate-200">入力枠上限</td>
+                <td class="p-2.5 border border-slate-200">数値</td>
+                <td class="p-2.5 border border-slate-200">方式2-Bの固定枠数（例: <code>30</code>）</td>
+              </tr>
+              <tr class="bg-emerald-50/30">
+                <td class="p-2.5 font-mono text-emerald-700 border border-slate-200">IsEmptyCheck</td>
+                <td class="p-2.5 border border-slate-200">空行判定キー</td>
+                <td class="p-2.5 border border-slate-200">Yes/No</td>
+                <td class="p-2.5 border border-slate-200">空行スキップ・終了判定の対象列か</td>
+              </tr>
+              <tr class="bg-purple-50/30">
+                <td class="p-2.5 font-bold border border-slate-200" rowspan="6">出力先 (Output)</td>
+                <td class="p-2.5 font-mono text-purple-700 border border-slate-200">OutputWorkbook</td>
+                <td class="p-2.5 border border-slate-200">出力雛形名</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">転記先テンプレート名（例: <code>Template_D2.xlsx</code>）</td>
+              </tr>
+              <tr class="bg-purple-50/30">
+                <td class="p-2.5 font-mono text-purple-700 border border-slate-200">OutputSheet</td>
+                <td class="p-2.5 border border-slate-200">出力シート名</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">書き込み先シート名（例: <code>報告帳票</code>）</td>
+              </tr>
+              <tr class="bg-purple-50/30">
+                <td class="p-2.5 font-mono text-purple-700 border border-slate-200">OutputLocation</td>
+                <td class="p-2.5 border border-slate-200">出力位置</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200"><strong>セル番地（<code>D10</code>）</strong> または <strong>列記号（<code>C</code>）</strong></td>
+              </tr>
+              <tr class="bg-purple-50/30">
+                <td class="p-2.5 font-mono text-purple-700 border border-slate-200">OutputStartRow</td>
+                <td class="p-2.5 border border-slate-200">出力開始行</td>
+                <td class="p-2.5 border border-slate-200">数値</td>
+                <td class="p-2.5 border border-slate-200">表形式の書き込み開始行（例: <code>7</code>）</td>
+              </tr>
+              <tr class="bg-purple-50/30">
+                <td class="p-2.5 font-mono text-purple-700 border border-slate-200">OutputMaxRows</td>
+                <td class="p-2.5 border border-slate-200">出力枠上限</td>
+                <td class="p-2.5 border border-slate-200">数値</td>
+                <td class="p-2.5 border border-slate-200">帳票側の明細枠上限行数（例: <code>30</code>）</td>
+              </tr>
+              <tr class="bg-purple-50/30">
+                <td class="p-2.5 font-mono text-purple-700 border border-slate-200">SortOrder</td>
+                <td class="p-2.5 border border-slate-200">出力ソート順</td>
+                <td class="p-2.5 border border-slate-200">テキスト</td>
+                <td class="p-2.5 border border-slate-200">出力時の並び替えルール（例: <code>1:ASC</code>）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 7 -->
+      <section id="sec-schema" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 7</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">7. SPO動的列追加 (安全設計・追加のみ)</h3>
+        </div>
+
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <h4 class="font-bold text-sm text-slate-800">安全設計の原則</h4>
+          <ul class="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+            <li><strong>追加（拡張）のみ自動化:</strong> マッピング表の未作成列を検知し、REST APIで動的作成。</li>
+            <li><strong>削除は非対象（データ絶対保護）:</strong> マッピング表から項目が消えても、SPO側の列削除は一切行わない。</li>
+            <li><strong>誤操作による過去データ消失を100%防止:</strong> 過去数年分のログが安全に保護されます。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Section 8 -->
+      <section id="sec-steps" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
+        <div class="border-b border-slate-100 pb-4">
+          <span class="text-xs font-bold text-blue-600 tracking-wider uppercase">Section 8</span>
+          <h3 class="text-xl font-bold text-slate-900 mt-1">8. 今後の実装ステップ</h3>
+        </div>
+        <ol class="space-y-2.5 text-xs text-slate-600 list-decimal list-inside">
+          <li><strong>Step 1:</strong> SPO上に「マッピング表リスト」および「データ蓄積リスト」の枠組みを作成</li>
+          <li><strong>Step 2:</strong> 【フロー3】リスト拡張フローの実装・テスト（新規列の自動追加確認）</li>
+          <li><strong>Step 3:</strong> 入力用 Office Scripts の作成（方式1, 2-A, 2-B の抽出ロジック）</li>
+          <li><strong>Step 4:</strong> 【フロー1】データ取込フローの実装・テスト（ファイル名パース ➔ 削除 ➔ 登録）</li>
+          <li><strong>Step 5:</strong> 出力用 Office Scripts および 【フロー2】帳票出力フローの実装</li>
+        </ol>
+      </section>
+
+      <!-- Feedback / Input Section -->
+      <section id="feedback-section" class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-6 sm:p-8 border border-emerald-200 shadow-sm space-y-6">
+        <div class="border-b border-emerald-200 pb-4 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold text-emerald-700 tracking-wider uppercase">Interactive Area</span>
+            <h3 class="text-xl font-bold text-slate-900 mt-1 flex items-center space-x-2">
+              <span>📝 メモ・フィードバック入力エリア</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-1">外部からの要望、気づき、メモをここに入力して記録・共有できます。</p>
+          </div>
+          <span class="text-3xl">🐾</span>
+        </div>
+
+        <form id="feedback-form" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">お名前 / 担当部署</label>
+              <input type="text" id="user-name" placeholder="例: 山田 / 経理担当" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">メモの種別</label>
+              <select id="feedback-type" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                <option value="仕様確認・質問">仕様確認・質問</option>
+                <option value="機能追加・要望">機能追加・要望</option>
+                <option value="帳票フォーマット変更">帳票フォーマット変更</option>
+                <option value="備忘録・その他メモ">備忘録・その他メモ</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">メモ・フィードバック内容</label>
+            <textarea id="feedback-content" rows="4" placeholder="ここに仕様書への要望やコメントを入力してください..." class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" required></textarea>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex flex-wrap gap-2.5 pt-2">
+            <button type="button" onclick="saveToLocalStorage()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition flex items-center space-x-1.5 shadow-sm">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>ブラウザに保存</span>
+            </button>
+            <button type="button" onclick="copyFeedbackText()" class="px-4 py-2 bg-slate-700 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition flex items-center space-x-1.5 shadow-sm">
+              <i class="fa-solid fa-copy"></i>
+              <span>クリップボードにコピー</span>
+            </button>
+            <button type="button" onclick="openGitHubIssue()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition flex items-center space-x-1.5 shadow-sm">
+              <i class="fa-brands fa-github"></i>
+              <span>GitHub Issue として送信</span>
+            </button>
+            <button type="button" onclick="downloadMemoFile()" class="px-4 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50 transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-download"></i>
+              <span>テキスト保存</span>
+            </button>
+            <button type="button" onclick="clearForm()" class="px-3 py-2 text-slate-500 hover:text-slate-700 text-xs transition">
+              クリア
+            </button>
+          </div>
+        </form>
+
+        <!-- Stored Memos List -->
+        <div id="memos-container" class="mt-6 pt-4 border-t border-emerald-200/60 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+              <i class="fa-solid fa-list-check text-emerald-600"></i>
+              <span>保存されたメモ履歴（ブラウザ内保存）</span>
+            </h4>
+            <button onclick="clearAllMemos()" class="text-xs text-red-600 hover:underline">すべて削除</button>
+          </div>
+          <div id="memos-list" class="space-y-2 text-xs">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
+    <p>Excel ➔ SharePoint Online ➔ Excel データ転記システム 仕様書（第 2.3 版）</p>
+    <p class="mt-1">Built with ❤️ by トコ (Toko) ＆ にゃー</p>
+  </footer>
+
+  <!-- Script for Feedback functionality -->
+  <script>
+    const STORAGE_KEY = 'zeiseimemo_feedbacks';
+
+    function getFormData() {
+      const name = document.getElementById('user-name').value.trim() || '匿名';
+      const type = document.getElementById('feedback-type').value;
+      const content = document.getElementById('feedback-content').value.trim();
+      const timestamp = new Date().toLocaleString('ja-JP');
+      return { name, type, content, timestamp };
+    }
+
+    function saveToLocalStorage() {
+      const data = getFormData();
+      if (!data.content) {
+        alert('メモ・フィードバック内容を入力してくださいにゃ！');
+        return;
+      }
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      existing.unshift(data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+      renderMemos();
+      document.getElementById('feedback-content').value = '';
+      alert('ブラウザに保存したにゃ！いつでも確認できるにゃん🐾');
+    }
+
+    function copyFeedbackText() {
+      const data = getFormData();
+      if (!data.content) {
+        alert('内容を入力してくださいにゃ！');
+        return;
+      }
+      const text = `【${data.type}】\n投稿者: ${data.name}\n日時: ${data.timestamp}\n\n${data.content}`;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('クリップボードにコピーしたにゃ！チャット等に貼り付けられるにゃん🐾');
+      });
+    }
+
+    function openGitHubIssue() {
+      const data = getFormData();
+      if (!data.content) {
+        alert('内容を入力してくださいにゃ！');
+        return;
+      }
+      const title = encodeURIComponent(`[${data.type}] ${data.content.substring(0, 30)}...`);
+      const body = encodeURIComponent(
+        `## 概要\n- **種別**: ${data.type}\n- **投稿者**: ${data.name}\n- **日時**: ${data.timestamp}\n\n## 詳細\n${data.content}`
+      );
+      const url = `https://github.com/raise-sys/zeiseimemo/issues/new?title=${title}&body=${body}`;
+      window.open(url, '_blank');
+    }
+
+    function downloadMemoFile() {
+      const data = getFormData();
+      if (!data.content) {
+        alert('内容を入力してくださいにゃ！');
+        return;
+      }
+      const text = `【${data.type}】\n投稿者: ${data.name}\n日時: ${data.timestamp}\n\n${data.content}`;
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `memo_${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearForm() {
+      document.getElementById('user-name').value = '';
+      document.getElementById('feedback-content').value = '';
+    }
+
+    function renderMemos() {
+      const container = document.getElementById('memos-list');
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      if (existing.length === 0) {
+        container.innerHTML = '<p class="text-slate-400 italic">保存されたメモはまだありませんにゃ。</p>';
+        return;
+      }
+      container.innerHTML = existing.map((memo, idx) => `
+        <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+          <div class="flex items-center justify-between text-[11px] text-slate-500">
+            <span class="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">${memo.type}</span>
+            <span>${memo.name} · ${memo.timestamp}</span>
+          </div>
+          <p class="text-slate-800 whitespace-pre-wrap">${memo.content}</p>
+        </div>
+      `).join('');
+    }
+
+    function clearAllMemos() {
+      if (confirm('保存されたメモをすべて消去しますか？')) {
+        localStorage.removeItem(STORAGE_KEY);
+        renderMemos();
+      }
+    }
+
+    // Initial render
+    document.addEventListener('DOMContentLoaded', () => {
+      renderMemos();
+    });
+  </script>
+</body>
+</html>
